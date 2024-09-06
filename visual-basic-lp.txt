@@ -1,0 +1,535 @@
+Sub GenerateCarRentalProblem()
+    Dim estimatedDemandArr() As Variant
+    estimatedDemandArr = [{100, 250, 95, 160; 150, 143, 195, 99; 135, 80, 242, 55; 83, 225, 111, 96; 120, 210, 70, 115; 230, 98, 124, 80}]
+   
+    Dim hireReturnRateArr() As Variant
+    hireReturnRateArr = [{0.60, 0.20, 0.10, 0.10; 0.15, 0.55, 0.25, 0.05; 0.15, 0.20, 0.54, 0.11; 0.08, 0.12, 0.27, 0.53}]
+
+    Dim transferCostArr As Variant
+    transferCostArr = [{0, 20, 30, 50; 20, 0, 15, 35; 30, 15, 0, 25; 50, 35, 25, 0}]
+
+    Dim hirePriceArr As Variant
+    hirePriceArr = [{50, 70; 70, 100; 120, 150}]
+    
+    Dim saturdayDiscount As Integer
+    saturdayDiscount = 20
+    
+    Dim marginalCostArr As Variant
+    marginalCostArr = [{20, 25, 30}]
+    
+    Dim rentDaysArr As Variant
+    rentDaysArr = [{1, 2, 3}]
+        
+    Dim daysArr As Variant
+    daysArr = [{1, 2, 3, 4, 5, 6}]
+    
+    Dim sat As Integer
+    sat = 6
+    
+    Dim daysNameArr As Variant
+    daysNameArr = [{"Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"}]
+    
+    Dim depotsArr As Variant
+    depotsArr = [{"Glasgow", "Manchester", "Birmingham", "Plymouth"}]
+    
+    Dim damagedCarCharge As Integer
+    damagedCarCharge = 100
+    
+    Dim damageRate As Single
+    damageRate = 0.15
+    
+    Dim decisionVarNameArr As Variant
+    decisionVarNameArr = [{"nu_it", "nd_it", "tr_it", "rp_it", "eu_it", "ed_it"}]
+    
+    Dim transferDecisionVarNameArr As Variant
+    transferDecisionVarNameArr = [{"tu_ijt", "td_ijt"}]
+    
+    ' For conciseness P and D are the same but it allows formulating more readable & easier
+    Dim P As New Scripting.Dictionary
+    P.Add "Glasgow", 1
+    P.Add "Manchester", 2
+    P.Add "Birmingham", 3
+    P.Add "Plymouth", 4
+    
+    Dim D As New Scripting.Dictionary
+    D.Add "Glasgow", 1
+    D.Add "Manchester", 2
+    D.Add "Birmingham", 3
+    D.Add "Plymouth", 4
+    
+    Dim Q As New Scripting.Dictionary
+    Q.Add 1, 0.55
+    Q.Add 2, 0.2
+    Q.Add 3, 0.25
+    
+    Dim rp As New Scripting.Dictionary
+    rp.Add "Glasgow", 0
+    rp.Add "Manchester", 12
+    rp.Add "Birmingham", 20
+    rp.Add "Plymouth", 0
+    
+    ' Set Up Decision Variables
+    For dIndex = 1 To UBound(depotsArr)
+        Sheet1.Range("C2").Offset((dIndex - 1) * 9).Value = depotsArr(dIndex)
+        For rw = 1 To UBound(daysNameArr)
+            Sheet1.Range("B3").Offset(((dIndex - 1) * 9) + rw).Value = daysNameArr(rw)
+            For cw = 1 To UBound(decisionVarNameArr, 1)
+                Sheet1.Range("B3").Offset(((dIndex - 1) * 9), cw).Value = decisionVarNameArr(cw)
+                Sheet1.Range("B3").Offset(((dIndex - 1) * 9) + rw, cw).Interior.Color = RGB(255, 255, 0)
+            Next cw
+        Next rw
+    Next dIndex
+    
+    For iDepot = 1 To UBound(depotsArr)
+        Sheet1.Range("L2").Offset(0, ((iDepot - 1) * 2)).Value = depotsArr(iDepot)
+        For rw = 1 To UBound(daysNameArr)
+            Sheet1.Range("J3").Offset(((rw - 1) * 4) + 1).Value = daysNameArr(rw)
+            For cw = 1 To UBound(transferDecisionVarNameArr)
+                Sheet1.Range("K3").Offset(0, (cw + ((iDepot - 1) * 2))).Value = transferDecisionVarNameArr(cw)
+                
+                For jDepot = 1 To 4
+                    Sheet1.Range("K3").Offset(((rw - 1) * 4) + jDepot).Value = depotsArr(jDepot)
+                    
+                    Sheet1.Range("K3").Offset(((rw * 4) - 4) + jDepot, (cw + ((iDepot - 1) * 2))).Interior.Color = RGB(255, 255, 0)
+                Next jDepot
+            Next cw
+        Next rw
+    Next iDepot
+
+    ' Number of Cars
+    Sheet1.Range("U3").Interior.Color = RGB(255, 255, 0)
+
+    ' Objective Function
+    Dim objectiveFunction As String
+    objectiveFunction = "="
+    Dim i As Variant
+    Dim t As Variant
+    Dim k As Variant
+    For Each i In depotsArr
+        For Each t In daysArr
+            If t <> sat Then
+                For Each k In rentDaysArr
+                    'SUM[i=[Glasgow, Manchester, Birmingham, Plymouth], t=Monday to Friday, k=1 to 3] P_iiQ_k(RCA_k-CS_k+10)tr_it
+                    objectiveFunction = objectiveFunction & (hireReturnRateArr(P(i), P(i)) * Q(k) * (hirePriceArr(k, 1) - marginalCostArr(k) + (damageRate * damagedCarCharge))) & "*" & GetCell(i, "tr_it", t) & "+"
+                Next k
+            End If
+        Next t
+    Next i
+    
+    Dim j As Variant
+    For Each i In depotsArr
+        For Each t In daysArr
+            If t <> sat Then
+                For Each k In rentDaysArr
+                    For Each j In depotsArr
+                        If i <> j Then
+                            'SUM[i=[Glasgow, Manchester, Birmingham, Plymouth], j=[Glasgow, Manchester, Birmingham, Plymouth], t=Monday to Friday, k=1 to 3] P_ij*Q_k*(RCA_k-CS_k+10)*tr_it
+                            objectiveFunction = objectiveFunction & (hireReturnRateArr(P(i), P(j)) * Q(k) * (hirePriceArr(k, 2) - marginalCostArr(k) + (damageRate * damagedCarCharge))) & "*" & GetCell(i, "tr_it", t) & "+"
+                        End If
+                    Next j
+                Next k
+            End If
+        Next t
+    Next i
+    
+    For Each i In depotsArr
+        ' SUM[i=[Glasgow, Manchester, Birmingham, Plymouth], t=Saturday] P_iiQ_1(RCC-CS_1+10)tr_it
+        objectiveFunction = objectiveFunction & (hireReturnRateArr(P(i), P(i)) * Q(1) * (hirePriceArr(1, 1) - saturdayDiscount - marginalCostArr(1) + (damageRate * damagedCarCharge))) & "*" & GetCell(i, "tr_it", sat) & "+"
+    Next i
+    
+    For Each i In depotsArr
+        For Each j In depotsArr
+            If i <> j Then
+                ' SUM[i=[Glasgow, Manchester, Birmingham, Plymouth], t=Saturday] P_ijQ_1(RCD-CS_1+10)tr_it
+                objectiveFunction = objectiveFunction & (hireReturnRateArr(P(i), P(j)) * Q(1) * (hirePriceArr(1, 2) - saturdayDiscount - marginalCostArr(1) + (damageRate * damagedCarCharge))) & "*" & GetCell(i, "tr_it", sat) & "+"
+            End If
+        Next j
+    Next i
+    
+    For Each i In depotsArr
+        For Each k In rentDaysArr
+            If k <> 1 Then
+                ' SUM[i=[Glasgow, Manchester, Birmingham, Plymouth], t=Saturday, k=2 to 3] P_iiQ_k(RCA_k-CS_k+10)tr_it
+                objectiveFunction = objectiveFunction & (hireReturnRateArr(P(i), P(i)) * Q(k) * (hirePriceArr(k, 1) - marginalCostArr(k) + (damageRate * damagedCarCharge))) & "*" & GetCell(i, "tr_it", sat) & "+"
+            End If
+        Next k
+    Next i
+    
+    For Each i In depotsArr
+        For Each j In depotsArr
+            For Each k In rentDaysArr
+                If k <> 1 And i <> j Then
+                    ' SUM[i=[Glasgow, Manchester, Birmingham, Plymouth], j=[Glasgow, Manchester, Birmingham, Plymouth], t=Saturday, k=2 to 3] P_ij*Q_k(RCB_k-CS_k+10)*tr_it
+                    objectiveFunction = objectiveFunction & (hireReturnRateArr(P(i), P(j)) * Q(k) * (hirePriceArr(k, 2) - marginalCostArr(k) + (damageRate * damagedCarCharge))) & "*" & GetCell(i, "tr_it", sat) & "+"
+                End If
+            Next k
+        Next j
+    Next i
+    
+    objectiveFunction = Mid(objectiveFunction, 1, Len(objectiveFunction) - 1)
+    
+    For Each i In depotsArr
+        For Each j In depotsArr
+            For Each t In daysArr
+                If i <> j Then
+                    ' SUM[i=[Glasgow, Manchester, Birmingham, Plymouth], j=[Glasgow, Manchester, Birmingham, Plymouth] C_ij*tu_ijt]
+                    objectiveFunction = objectiveFunction & (transferCostArr(P(i), P(j))) & "*" & GetTransferCell(i, j, t, "tu_ijt") & "-"
+                End If
+            Next t
+        Next j
+    Next i
+    
+    For Each i In depotsArr
+        For Each j In depotsArr
+            For Each t In daysArr
+                If i <> j Then
+                    ' SUM[i=[Glasgow, Manchester, Birmingham, Plymouth], j=[Glasgow, Manchester, Birmingham, Plymouth] C_ij*td_ijt]
+                    objectiveFunction = objectiveFunction & (transferCostArr(P(i), P(j))) & "*" & GetTransferCell(i, j, t, "td_ijt") & "-"
+                End If
+            Next t
+        Next j
+    Next i
+    
+    objectiveFunction = objectiveFunction & "25*U3"
+    Sheet1.Range("U2").Formula = objectiveFunction
+    Sheet1.Range("U2").Interior.Color = RGB(0, 125, 255)
+    
+    'Debug.Print objectiveFunction
+    
+    ' Constraints
+    Dim constraint As String
+    Dim constraintRange As Range
+    
+    ' Constraint 1: Total number of undamaged cars into depot i on day t
+    Set constraintRange = Sheet1.Range("B38")
+    For Each i In depotsArr
+        For Each t In daysArr
+            constraint = "="
+            For Each j In depotsArr
+                For Each k In rentDaysArr
+                    ' SUM[j=[Glasgow, Manchester, Birmingham, Plymouth], k=1 to 3] 0.9*P_ji*Q_k*tr_jt-k
+                    constraint = constraint & (0.9 * hireReturnRateArr(P(j), P(i)) * Q(k)) & "*" & GetCell(j, "tr_it", CircularValue(daysArr, t - k)) & "+"
+                Next k
+            Next j
+            
+            For Each j In depotsArr
+                If i <> j Then
+                    ' SUM[j=[Glasgow, Manchester, Birmingham, Plymouth]] tu_jit-1
+                    constraint = constraint & GetTransferCell(j, i, CircularValue(daysArr, t - 1), "tu_ijt") & "+"
+                End If
+            Next j
+            
+            ' rp_it-1
+            constraint = constraint & GetCell(i, "rp_it", CircularValue(daysArr, t - 1)) & "+"
+            
+            ' eu_it-1
+            constraint = constraint & GetCell(i, "eu_it", CircularValue(daysArr, t - 1)) & "+"
+            
+            constraintRange.Offset(P(i), t).Formula = Mid(constraint, 1, Len(constraint) - 1)
+            constraintRange.Offset(P(i), t).Interior.Color = RGB(0, 128, 0)
+            
+    
+            ' Column Names
+            constraintRange.Offset(0, t).Value = daysNameArr(t)
+            'Debug.Print constraint
+            
+            ' Equals
+            Sheet1.Range("B43").Offset(0, t).Value = "="
+            
+            ' = nu_it
+            Sheet1.Range("B43").Offset(P(i), t).Formula = "=" & GetCell(i, "nu_it", t)
+        Next t
+        
+        ' Row Names
+        constraintRange.Offset(P(i), 0).Value = i
+    Next i
+    
+    ' Constraint 2: Total number of damaged cars into depot i on day t
+    Set constraintRange = Sheet1.Range("B49")
+    For Each i In depotsArr
+        For Each t In daysArr
+            constraint = "="
+            For Each j In depotsArr
+                For Each k In rentDaysArr
+                    ' SUM[j=[Glasgow, Manchester, Birmingham, Plymouth], k=1 to 3] 0.1*P_ji*Q_k*tr_jt-k
+                    constraint = constraint & (0.1 * hireReturnRateArr(P(j), P(i)) * Q(k)) & "*" & GetCell(j, "tr_it", CircularValue(daysArr, t - k)) & "+"
+                Next k
+            Next j
+            
+            For Each j In depotsArr
+                If i <> j Then
+                    ' SUM[j=[Glasgow, Manchester, Birmingham, Plymouth]] td_jit-1
+                    constraint = constraint & GetTransferCell(j, i, CircularValue(daysArr, t - 1), "td_ijt") & "+"
+                End If
+            Next j
+            
+            ' ed_it-1
+            constraint = constraint & GetCell(i, "ed_it", CircularValue(daysArr, t - 1)) & "+"
+            
+            constraintRange.Offset(P(i), t).Formula = Mid(constraint, 1, Len(constraint) - 1)
+            constraintRange.Offset(P(i), t).Interior.Color = RGB(0, 128, 0)
+    
+            ' Column Names
+            constraintRange.Offset(0, t).Value = daysNameArr(t)
+            'Debug.Print constraint
+            
+            ' Equals
+            Sheet1.Range("B54").Offset(0, t).Value = "="
+            
+            ' = nd_it
+            Sheet1.Range("B54").Offset(P(i), t).Formula = "=" & GetCell(i, "nd_it", t)
+        Next t
+        
+        ' Row Names
+        constraintRange.Offset(P(i), 0).Value = i
+    Next i
+    
+    ' Constraint 3: Constraint 3: Total number of undamaged cars out of depot i on day t
+    Set constraintRange = Sheet1.Range("B60")
+    For Each i In depotsArr
+        For Each t In daysArr
+            constraint = "="
+            
+            ' tr_it
+            constraint = constraint & GetCell(i, "tr_it", t) & "+"
+            
+            For Each j In depotsArr
+                If i <> j Then
+                    ' SUM[j=[Glasgow, Manchester, Birmingham, Plymouth]] tu_ijt
+                    constraint = constraint & GetTransferCell(i, j, t, "tu_ijt") & "+"
+                End If
+            Next j
+            
+            ' eu_it
+            constraint = constraint & GetCell(i, "eu_it", t) & "+"
+            
+            constraintRange.Offset(P(i), t).Formula = Mid(constraint, 1, Len(constraint) - 1)
+            constraintRange.Offset(P(i), t).Interior.Color = RGB(0, 128, 0)
+            
+            ' Column Names
+            constraintRange.Offset(0, t).Value = daysNameArr(t)
+            'Debug.Print constraint
+            
+            ' Equals
+            Sheet1.Range("B65").Offset(0, t).Value = "="
+            
+            ' = nu_it
+            Sheet1.Range("B65").Offset(P(i), t).Formula = "=" & GetCell(i, "nu_it", t)
+        Next t
+        
+        ' Row Names
+        constraintRange.Offset(P(i), 0).Value = i
+    Next i
+    
+    ' Constraint 4: Total number of damaged cars out of depot i on day t
+    Set constraintRange = Sheet1.Range("B71")
+    For Each i In depotsArr
+        For Each t In daysArr
+            constraint = "="
+            
+            ' rp_it-1
+            constraint = constraint & GetCell(i, "rp_it", CircularValue(daysArr, t - 1)) & "+"
+            
+            For Each j In depotsArr
+                If i <> j Then
+                    ' SUM[j=[Glasgow, Manchester, Birmingham, Plymouth]] td_ijt
+                    constraint = constraint & GetTransferCell(i, j, t, "td_ijt") & "+"
+                End If
+            Next j
+            
+            ' ed_it
+            constraint = constraint & GetCell(i, "ed_it", t) & "+"
+            
+            constraintRange.Offset(P(i), t).Formula = Mid(constraint, 1, Len(constraint) - 1)
+            constraintRange.Offset(P(i), t).Interior.Color = RGB(0, 128, 0)
+            
+            ' Column Names
+            constraintRange.Offset(0, t).Value = daysNameArr(t)
+            'Debug.Print constraint
+            
+            ' Equals
+            Sheet1.Range("B76").Offset(0, t).Value = "="
+            
+            ' = nd_it
+            Sheet1.Range("B76").Offset(P(i), t).Formula = "=" & GetCell(i, "nd_it", t)
+        Next t
+        
+        ' Row Names
+        constraintRange.Offset(P(i), 0).Value = i
+    Next i
+    
+    ' Constraint 5: Repair capacity of depot i on all days
+    Set constraintRange = Sheet1.Range("B82")
+    For Each i In depotsArr
+        For Each t In daysArr
+            constraint = "="
+            
+            ' rp_it
+            constraint = constraint & GetCell(i, "rp_it", t)
+            
+            constraintRange.Offset(P(i), t).Formula = constraint
+            constraintRange.Offset(P(i), t).Interior.Color = RGB(0, 128, 0)
+            
+            ' Column Names
+            constraintRange.Offset(0, t).Value = daysNameArr(t)
+            'Debug.Print constraint
+            
+            ' Less than or Equals
+            Sheet1.Range("B87").Offset(0, t).Value = "<="
+            
+            ' <= rp_i
+            Sheet1.Range("B87").Offset(P(i), t).Formula = rp(i)
+        Next t
+        
+        ' Row Names
+        constraintRange.Offset(P(i), 0).Value = i
+    Next i
+    
+    ' Constraint 6: Demand at depot i on day t
+    Set constraintRange = Sheet1.Range("B93")
+    For Each i In depotsArr
+        For Each t In daysArr
+            constraint = "="
+            
+            ' tr_it
+            constraint = constraint & GetCell(i, "tr_it", t)
+            
+            constraintRange.Offset(P(i), t).Formula = constraint
+            constraintRange.Offset(P(i), t).Interior.Color = RGB(0, 128, 0)
+            
+            ' Column Names
+            constraintRange.Offset(0, t).Value = daysNameArr(t)
+            'Debug.Print constraint
+            
+            ' Less than or Equals
+            Sheet1.Range("B98").Offset(0, t).Value = "<="
+            
+            ' <= D_it
+            Sheet1.Range("B98").Offset(P(i), t).Formula = estimatedDemandArr(t, D(i))
+        Next t
+        
+        ' Row Names
+        constraintRange.Offset(P(i), 0).Value = i
+    Next i
+    
+    ' Constraint 7: Constraint 7: Total number of cars equals number hired out from all depots on Monday" +
+    ' "for 3 days, plus those on Tuesday for 2 or 3 days, plus all damaged and undamaged cars in depots" +
+    ' "at the beginning of Wednesday.
+    Set constraintRange = Sheet1.Range("C104")
+    constraint = "="
+    For Each i In depotsArr
+        constraint = constraint & Q(3) & "*" & GetCell(i, "tr_it", 1) & "+" & (Q(2) + Q(3)) & "*" & GetCell(i, "tr_it", 2) & "+" & GetCell(i, "nu_it", 3) & "+" & GetCell(i, "nd_it", 3) & "+"
+    Next i
+    constraintRange.Offset.Formula = Mid(constraint, 1, Len(constraint) - 1)
+    constraintRange.Interior.Color = RGB(0, 128, 0)
+    
+    ' Equals
+    Sheet1.Range("C104").Offset(0, 1).Value = "="
+    
+    ' = n
+    Sheet1.Range("C104").Offset(0, 2).Formula = "=U3"
+    
+End Sub
+
+Function GetCell(depot As Variant, variable As String, day As Variant) As String
+    Select Case variable
+        Case "nu_it"
+            GetCell = "C"
+        Case "nd_it"
+            GetCell = "D"
+        Case "tr_it"
+            GetCell = "E"
+        Case "rp_it"
+            GetCell = "F"
+        Case "eu_it"
+            GetCell = "G"
+        Case "ed_it"
+            GetCell = "H"
+        Case Else
+            ' Unknown variable
+    End Select
+    
+    Dim index As Integer
+    index = 0
+    Select Case depot
+        Case "Glasgow"
+            index = 3
+        Case "Manchester"
+            index = 12
+        Case "Birmingham"
+            index = 21
+        Case "Plymouth"
+            index = 30
+        Case Else
+            ' Unknown depot
+    End Select
+            
+    GetCell = GetCell & (index + day)
+End Function
+
+Function GetTransferCell(depotI As Variant, depotJ As Variant, day As Variant, variable As String) As String
+    Dim index As Integer
+    index = 0
+    Select Case day
+        Case 1
+            index = 4
+        Case 2
+            index = 8
+        Case 3
+            index = 12
+        Case 4
+            index = 16
+        Case 5
+            index = 20
+        Case 6
+            index = 24
+    End Select
+    
+    Select Case depotI
+        Case "Glasgow"
+            index = index
+        Case "Manchester"
+            index = index + 1
+        Case "Birmingham"
+            index = index + 2
+        Case "Plymouth"
+            index = index + 3
+    End Select
+            
+    Select Case depotJ
+        Case "Glasgow"
+            GetTransferCell = "L"
+        Case "Manchester"
+            GetTransferCell = "N"
+        Case "Birmingham"
+            GetTransferCell = "P"
+        Case "Plymouth"
+            GetTransferCell = "R"
+    End Select
+    
+    If variable = "td_ijt" Then
+        GetTransferCell = Chr(Asc(GetTransferCell) + 1)
+    Else
+        ' ignore
+    End If
+    
+    GetTransferCell = GetTransferCell & index
+End Function
+
+Function CircularValue(arr As Variant, index As Integer) As Variant
+    Dim length As Long
+    length = UBound(arr) - LBound(arr) + 1
+    
+    If length > 0 Then
+        ' Adjust the index to be within the bounds of the array
+        While index < LBound(arr)
+            index = index + length
+        Wend
+        
+        While index > UBound(arr)
+            index = index - length
+        Wend
+        
+        CircularValue = arr(index)
+    End If
+End Function
